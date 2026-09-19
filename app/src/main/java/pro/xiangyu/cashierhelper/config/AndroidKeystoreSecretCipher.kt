@@ -11,7 +11,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 class AndroidKeystoreSecretCipher(
     private val keyAlias: String = KEY_ALIAS,
-) : SecretCipher {
+) : SecretCipher, BinarySecretCipher {
     override fun encrypt(value: String): EncryptedSecret {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
@@ -27,6 +27,25 @@ class AndroidKeystoreSecretCipher(
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
         val plaintext = cipher.doFinal(Base64.decode(secret.ciphertext, Base64.NO_WRAP))
         return plaintext.toString(Charsets.UTF_8)
+    }
+
+    override fun encryptBytes(value: ByteArray): EncryptedBytes {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        return EncryptedBytes(
+            ciphertext = cipher.doFinal(value),
+            initializationVector = cipher.iv,
+        )
+    }
+
+    override fun decryptBytes(secret: EncryptedBytes): ByteArray {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            getOrCreateKey(),
+            GCMParameterSpec(GCM_TAG_LENGTH_BITS, secret.initializationVector),
+        )
+        return cipher.doFinal(secret.ciphertext)
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -55,4 +74,3 @@ class AndroidKeystoreSecretCipher(
         const val GCM_TAG_LENGTH_BITS = 128
     }
 }
-

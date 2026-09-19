@@ -9,6 +9,7 @@ sealed interface UploadResult {
 
     data class Failed(
         val reason: UploadFailure,
+        val retryAfterMillis: Long? = null,
     ) : UploadResult
 }
 
@@ -19,8 +20,13 @@ enum class UploadFailure {
     REJECTED,
     INVALID_RESPONSE,
     NETWORK_ERROR,
+    INVALID_CONFIGURATION,
 }
 
 interface SourceDocumentUploader {
-    suspend fun upload(config: AppConfig, jpegBytes: ByteArray): UploadResult
+    suspend fun upload(
+        config: AppConfig,
+        jpegBytes: ByteArray,
+        idempotencyKey: String,
+    ): UploadResult
 }

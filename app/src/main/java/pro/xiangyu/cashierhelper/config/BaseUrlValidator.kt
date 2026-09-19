@@ -1,27 +1,27 @@
 package pro.xiangyu.cashierhelper.config
 
-import java.net.URI
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 object BaseUrlValidator {
     fun normalize(rawValue: String): Result<String> = runCatching {
-        val trimmed = rawValue.trim().trimEnd('/')
+        val trimmed = rawValue.trim()
         require(trimmed.isNotEmpty()) { "请输入服务器地址" }
 
-        val uri = URI(trimmed)
-        require(uri.scheme.equals("https", ignoreCase = true)) { "服务器地址必须使用 HTTPS" }
-        require(!uri.host.isNullOrBlank()) { "服务器地址缺少有效域名" }
-        require(uri.userInfo == null) { "服务器地址不能包含账号信息" }
-        require(uri.query == null && uri.fragment == null) { "服务器地址不能包含查询参数或片段" }
+        // Use OkHttp's parser so validation matches the exact URL that the
+        // request layer will resolve, instead of Java's more permissive URI.
+        val url = trimmed.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("服务器地址格式无效")
+        require(url.isHttps) { "服务器地址必须使用 HTTPS" }
+        require(url.username.isEmpty() && url.password.isEmpty()) {
+            "服务器地址不能包含账号信息"
+        }
+        require(url.query == null) { "服务器地址不能包含查询参数" }
+        require(url.fragment == null) { "服务器地址不能包含片段" }
 
-        URI(
-            "https",
-            null,
-            uri.host.lowercase(),
-            uri.port,
-            uri.path.takeUnless { it.isNullOrBlank() || it == "/" },
-            null,
-            null,
-        ).toASCIIString().trimEnd('/')
+        // HttpUrl already lowercases the host, drops an explicit default port
+        // and keeps a legal base path. Only the trailing slash is trimmed so
+        // path concatenation stays predictable.
+        url.toString().trimEnd('/')
     }
 }
-

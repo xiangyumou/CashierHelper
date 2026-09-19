@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,6 +53,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import pro.xiangyu.cashierhelper.feedback.NotificationAvailability
+import pro.xiangyu.cashierhelper.tasks.PendingTask
 import pro.xiangyu.cashierhelper.ui.theme.Success
 import pro.xiangyu.cashierhelper.ui.theme.Warning
 
@@ -63,10 +64,17 @@ fun SettingsScreen(
     initialBaseUrl: String,
     initialApiKey: String,
     accessibilityEnabled: Boolean,
-    notificationsEnabled: Boolean,
+    serviceConnected: Boolean,
+    notificationStatus: NotificationAvailability.Status,
+    tasks: List<PendingTask>,
     onSave: (String, String) -> Result<String>,
     onOpenAccessibilitySettings: () -> Unit,
     onRequestNotifications: () -> Unit,
+    onOpenAppNotificationSettings: () -> Unit,
+    onOpenChannelNotificationSettings: () -> Unit,
+    onRetryOriginal: (String) -> Unit,
+    onContinueQuery: (String) -> Unit,
+    onDeleteTask: (String) -> Unit,
 ) {
     var baseUrl by rememberSaveable { mutableStateOf(initialBaseUrl) }
     var apiKey by rememberSaveable { mutableStateOf(initialApiKey) }
@@ -182,7 +190,7 @@ fun SettingsScreen(
                     SettingsSection(title = "权限") {
                         PermissionRow(
                             icon = Icons.Outlined.Lock,
-                            title = "截图服务",
+                            title = "无障碍权限",
                             enabled = accessibilityEnabled,
                             enabledLabel = "已开启",
                             disabledLabel = "需要开启",
@@ -190,13 +198,28 @@ fun SettingsScreen(
                             onAction = onOpenAccessibilitySettings,
                         )
                         PermissionRow(
+                            icon = Icons.Outlined.Build,
+                            title = "截图服务",
+                            enabled = serviceConnected,
+                            enabledLabel = "已连接",
+                            disabledLabel = "未连接",
+                            actionLabel = "重新连接",
+                            onAction = onOpenAccessibilitySettings,
+                        )
+                        PermissionRow(
                             icon = Icons.Outlined.Notifications,
                             title = "结果通知",
-                            enabled = notificationsEnabled,
-                            enabledLabel = "已允许",
-                            disabledLabel = "未允许",
-                            actionLabel = "允许通知",
-                            onAction = onRequestNotifications,
+                            enabled = notificationStatus.isVisible,
+                            enabledLabel = "已开启",
+                            disabledLabel = "未开启",
+                            actionLabel = notificationActionLabel(notificationStatus),
+                            onAction = {
+                                when {
+                                    !notificationStatus.permissionGranted -> onRequestNotifications()
+                                    !notificationStatus.appEnabled -> onOpenAppNotificationSettings()
+                                    else -> onOpenChannelNotificationSettings()
+                                }
+                            },
                         )
                     }
                 }
@@ -233,9 +256,28 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                item {
+                    HorizontalDivider(color = DividerDefaults.color)
+                }
+
+                item {
+                    TaskSection(
+                        tasks = tasks,
+                        onRetryOriginal = onRetryOriginal,
+                        onContinueQuery = onContinueQuery,
+                        onDeleteTask = onDeleteTask,
+                    )
+                }
             }
         }
     }
+}
+
+private fun notificationActionLabel(status: NotificationAvailability.Status): String = when {
+    !status.permissionGranted -> "允许通知"
+    !status.appEnabled -> "打开通知设置"
+    else -> "打开渠道设置"
 }
 
 @Composable

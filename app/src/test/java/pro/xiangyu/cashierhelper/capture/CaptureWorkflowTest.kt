@@ -1,83 +1,84 @@
 package pro.xiangyu.cashierhelper.capture
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import pro.xiangyu.cashierhelper.config.AppConfig
-import pro.xiangyu.cashierhelper.network.SourceDocumentUploader
-import pro.xiangyu.cashierhelper.network.UploadFailure
-import pro.xiangyu.cashierhelper.network.UploadResult
 import pro.xiangyu.cashierhelper.storage.FailedImageStore
 
 class CaptureWorkflowTest {
-    private val config = AppConfig("https://cashier.example.com", "key")
     private val jpeg = byteArrayOf(1, 2, 3)
 
     @Test
-    fun `successful upload does not save screenshot`() = runTest {
-        val store = RecordingImageStore()
-        var captureAcknowledgements = 0
+    fun `successful capture returns bytes and acknowledges`() = runTest {
+        var acknowledgements = 0
         val workflow = CaptureWorkflow(
-            screenshotSource = FakeScreenshotSource(Result.success(jpeg)),
-            uploader = FakeUploader(UploadResult.Accepted("doc-1")),
-            failedImageStore = store,
-            onScreenshotCaptured = { captureAcknowledgements++ },
+            failedImageStore = RecordingImageStore(),
+            onScreenshotCaptured = { acknowledgements++ },
         )
 
-        assertEquals(CaptureOutcome.UploadAccepted("doc-1"), workflow.execute(config))
-        assertNull(store.savedBytes)
-        assertEquals(1, captureAcknowledgements)
+        val attempt = workflow.capture(FakeScreenshotSource(Result.success(jpeg)))
+
+        assertTrue(attempt is CaptureAttempt.Captured)
+        assertTrue((attempt as CaptureAttempt.Captured).jpegBytes.contentEquals(jpeg))
+        assertEquals(1, acknowledgements)
     }
 
     @Test
-    fun `failed upload saves captured jpeg`() = runTest {
-        val store = RecordingImageStore("Pictures/CashierHelper/image.jpg")
-        val workflow = CaptureWorkflow(
-            screenshotSource = FakeScreenshotSource(Result.success(jpeg)),
-            uploader = FakeUploader(UploadResult.Failed(UploadFailure.NETWORK_ERROR)),
-            failedImageStore = store,
-        )
+    fun `capture failure is reported as typed result`() = runTest {
+        val workflow = CaptureWorkflow(failedImageStore = RecordingImageStore())
 
-        assertEquals(
-            CaptureOutcome.UploadFailed(
-                UploadFailure.NETWORK_ERROR,
-                "Pictures/CashierHelper/image.jpg",
-            ),
-            workflow.execute(config),
-        )
-        assertTrue(store.savedBytes!!.contentEquals(jpeg))
+        val attempt = workflow.capture(FakeScreenshotSource(Result.failure(ScreenshotException(7))))
+
+        assertEquals(CaptureAttempt.Failed(7), attempt)
     }
 
     @Test
-    fun `capture failure neither uploads nor saves`() = runTest {
-        val uploader = RecordingUploader()
-        val store = RecordingImageStore()
-        val workflow = CaptureWorkflow(
-            screenshotSource = FakeScreenshotSource(Result.failure(ScreenshotException(7))),
-            uploader = uploader,
-            failedImageStore = store,
-        )
+    fun `capture failure without error code is still typed`() = runTest {
+        val workflow = CaptureWorkflow(failedImageStore = RecordingImageStore())
 
-        assertEquals(CaptureOutcome.CaptureFailed(7), workflow.execute(config))
-        assertFalse(uploader.called)
-        assertNull(store.savedBytes)
+        val attempt = workflow.capture(FakeScreenshotSource(Result.failure(IllegalStateException("x"))))
+
+        assertEquals(CaptureAttempt.Failed(null), attempt)
     }
 
     @Test
-    fun `failed image store does not interrupt failure result`() = runTest {
-        val workflow = CaptureWorkflow(
-            screenshotSource = FakeScreenshotSource(Result.success(jpeg)),
-            uploader = FakeUploader(UploadResult.Failed(UploadFailure.SERVER_ERROR)),
-            failedImageStore = ThrowingImageStore(),
-        )
+    fun `thrown capture exception does not escape`() = runTest {
+        val workflow = CaptureWorkflow(failedImageStore = RecordingImageStore())
 
-        assertEquals(
-            CaptureOutcome.UploadFailed(UploadFailure.SERVER_ERROR, null),
-            workflow.execute(config),
-        )
+        val attempt = workflow.capture(ThrowingScreenshotSource())
+
+        assertEquals(CaptureAttempt.Failed(3), attempt)
+    }
+
+    @Test
+    fun `cancellation is never swallowed`() = runTest {
+        val workflow = CaptureWorkflow(failedImageStore = RecordingImageStore())
+
+        var thrown = false
+        try {
+            workflow.capture(CancellingScreenshotSource())
+        } catch (_: CancellationException) {
+            thrown = true
+        }
+
+        assertTrue(thrown)
+    }
+
+    @Test
+    fun `failed image store errors do not escape`() = runTest {
+        val workflow = CaptureWorkflow(failedImageStore = ThrowingImageStore())
+
+        assertNull(workflow.saveFailedImage(jpeg))
+    }
+
+    @Test
+    fun `failed image is saved when the store works`() = runTest {
+        val workflow = CaptureWorkflow(failedImageStore = RecordingImageStore("Pictures/CashierHelper/x.jpg"))
+
+        assertEquals("Pictures/CashierHelper/x.jpg", workflow.saveFailedImage(jpeg))
     }
 
     private class FakeScreenshotSource(
@@ -86,18 +87,12 @@ class CaptureWorkflowTest {
         override suspend fun captureJpeg() = result
     }
 
-    private class FakeUploader(
-        private val result: UploadResult,
-    ) : SourceDocumentUploader {
-        override suspend fun upload(config: AppConfig, jpegBytes: ByteArray) = result
+    private class ThrowingScreenshotSource : ScreenshotSource {
+        override suspend fun captureJpeg(): Result<ByteArray> = throw ScreenshotException(3)
     }
 
-    private class RecordingUploader : SourceDocumentUploader {
-        var called = false
-        override suspend fun upload(config: AppConfig, jpegBytes: ByteArray): UploadResult {
-            called = true
-            return UploadResult.Accepted("doc-1")
-        }
+    private class CancellingScreenshotSource : ScreenshotSource {
+        override suspend fun captureJpeg(): Result<ByteArray> = throw CancellationException("cancelled")
     }
 
     private class RecordingImageStore(

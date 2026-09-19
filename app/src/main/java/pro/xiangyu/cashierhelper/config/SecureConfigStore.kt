@@ -25,14 +25,13 @@ class SecureConfigStore(
     override fun loadConfig(): AppConfig? {
         val draft = loadDraft()
         val normalizedUrl = BaseUrlValidator.normalize(draft.baseUrl).getOrNull() ?: return null
-        val apiKey = draft.apiKey.trim().takeIf { it.isNotEmpty() } ?: return null
+        val apiKey = ApiKeyValidator.normalize(draft.apiKey).getOrNull() ?: return null
         return AppConfig(normalizedUrl, apiKey)
     }
 
     override fun save(baseUrl: String, apiKey: String): Result<AppConfig> = runCatching {
         val normalizedUrl = BaseUrlValidator.normalize(baseUrl).getOrThrow()
-        val normalizedKey = apiKey.trim()
-        require(normalizedKey.isNotEmpty()) { "请输入 API Key" }
+        val normalizedKey = ApiKeyValidator.normalize(apiKey).getOrThrow()
         val encrypted = cipher.encrypt(normalizedKey)
 
         check(
@@ -53,4 +52,3 @@ class SecureConfigStore(
         const val KEY_API_IV = "api_key_iv"
     }
 }
-

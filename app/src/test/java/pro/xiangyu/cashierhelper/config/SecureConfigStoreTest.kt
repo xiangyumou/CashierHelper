@@ -51,9 +51,52 @@ class SecureConfigStoreTest {
         assertTrue(store.save("https://cashier.example.com", " ").isFailure)
     }
 
+    @Test
+    fun `a legacy cleartext address is rejected on load without crashing`() {
+        val store = SecureConfigStore(preferences, ReversingCipher)
+        store.save("https://cashier.example.com", "sk_test_secret").getOrThrow()
+        // Simulate a value an older build could have stored.
+        preferences.edit().putString("base_url", "http://cashier.example.com").commit()
+
+        assertNull(store.loadConfig())
+        assertEquals("http://cashier.example.com", store.loadDraft().baseUrl)
+    }
+
+    @Test
+    fun `a legacy key with whitespace is rejected on load without crashing`() {
+        val store = SecureConfigStore(preferences, ReversingCipher)
+        store.save("https://cashier.example.com", "sk_test_secret").getOrThrow()
+        preferences.edit()
+            .putString("api_key_ciphertext", ReversingCipher.encrypt("sk test").ciphertext)
+            .commit()
+
+        assertNull(store.loadConfig())
+        assertEquals("sk test", store.loadDraft().apiKey)
+    }
+
+    @Test
+    fun `an undecryptable key is treated as missing`() {
+        preferences.edit()
+            .putString("base_url", "https://cashier.example.com")
+            .putString("api_key_ciphertext", "ciphertext")
+            .putString("api_key_iv", "iv")
+            .commit()
+
+        val store = SecureConfigStore(preferences, ThrowingCipher)
+
+        assertNull(store.loadConfig())
+        assertEquals("", store.loadDraft().apiKey)
+    }
+
     private object ReversingCipher : SecretCipher {
         override fun encrypt(value: String) = EncryptedSecret(value.reversed(), "test-iv")
 
         override fun decrypt(secret: EncryptedSecret): String = secret.ciphertext.reversed()
+    }
+
+    private object ThrowingCipher : SecretCipher {
+        override fun encrypt(value: String): EncryptedSecret = error("keystore unavailable")
+
+        override fun decrypt(secret: EncryptedSecret): String = error("keystore unavailable")
     }
 }

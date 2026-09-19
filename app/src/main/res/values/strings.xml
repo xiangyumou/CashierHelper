@@ -6,7 +6,14 @@
     <string name="settings_shortcut_long_label">打开 Cashier Helper 设置</string>
     <string name="settings_shortcut_disabled">设置入口当前不可用</string>
     <string name="accessibility_service_label">Cashier Helper 截图服务</string>
-    <string name="accessibility_service_description">仅在你主动触发时截取当前屏幕，并上传到你配置的 Cashier 服务。</string>
+    <string name="accessibility_service_description">仅在你主动触发时截取默认显示屏，并上传到你配置的 Cashier 服务。</string>
     <string name="notification_channel_name">截图提交结果</string>
     <string name="notification_channel_description">显示截图提交、分析结果和本地保存结果</string>
+    <string name="message_invalid_configuration">连接配置无效，请重新保存</string>
+    <string name="message_invalid_response">服务器响应格式不兼容</string>
+    <string name="message_document_invalid">该截图无法用于记账</string>
+    <string name="message_query_paused">一分钟内未取得结果，可在设置中继续查询</string>
+    <string name="message_pending_confirmation">请先在设置中处理待确认的提交</string>
+    <string name="message_capacity_reached">任务列表已满，请先清理后再提交</string>
+    <string name="message_image_too_large">截图超过 3 MiB 限制</string>
 </resources>
