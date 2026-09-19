@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cashier Helper</string>
+    <string name="settings_title">设置</string>
+    <string name="settings_shortcut_label">设置</string>
+    <string name="settings_shortcut_long_label">打开 Cashier Helper 设置</string>
+    <string name="settings_shortcut_disabled">设置入口当前不可用</string>
+    <string name="accessibility_service_label">Cashier Helper 截图服务</string>
+    <string name="accessibility_service_description">仅在你主动触发时截取当前屏幕，并上传到你配置的 Cashier 服务。</string>
+    <string name="notification_channel_name">截图提交结果</string>
+    <string name="notification_channel_description">显示截图提交、分析结果和本地保存结果</string>
+</resources>

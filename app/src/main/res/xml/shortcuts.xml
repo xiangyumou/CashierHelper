@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_settings_shortcut"
+        android:shortcutDisabledMessage="@string/settings_shortcut_disabled"
+        android:shortcutId="settings"
+        android:shortcutLongLabel="@string/settings_shortcut_long_label"
+        android:shortcutShortLabel="@string/settings_shortcut_label">
+        <intent
+            android:action="pro.xiangyu.cashierhelper.action.SETTINGS"
+            android:targetClass="pro.xiangyu.cashierhelper.ui.SettingsActivity"
+            android:targetPackage="pro.xiangyu.cashierhelper" />
+    </shortcut>
+</shortcuts>
+
