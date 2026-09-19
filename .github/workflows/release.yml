@@ -23,7 +23,6 @@ jobs:
     env:
       PYTHONUTF8: "1"
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CASHIERHELPER_KEYSTORE_PATH: ${{ runner.temp }}/cashierhelper-release.keystore
     steps:
       - name: Check out the commit that triggered the run
         uses: actions/checkout@v7
@@ -64,6 +63,8 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          # runner 上下文在 workflow 级别的 env 里不可用，只能放在步骤级别。
+          CASHIERHELPER_KEYSTORE_PATH: ${{ runner.temp }}/cashierhelper-release.keystore
         run: |
           set -euo pipefail
           umask 077
@@ -76,6 +77,7 @@ jobs:
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
           CASHIERHELPER_REQUIRE_SIGNING: "true"
+          CASHIERHELPER_KEYSTORE_PATH: ${{ runner.temp }}/cashierhelper-release.keystore
           CASHIERHELPER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           CASHIERHELPER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           CASHIERHELPER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -140,4 +142,4 @@ jobs:
       - name: Delete the signing keystore
         if: always()
         run: |
-          rm -f "$CASHIERHELPER_KEYSTORE_PATH" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/cashierhelper-release.keystore" 2>/dev/null || true
