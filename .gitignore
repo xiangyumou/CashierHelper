@@ -6,3 +6,13 @@ local.properties
 captures/
 .DS_Store
 .hallmark/
+
+# 发布签名材料与本地发布的中间产物都不入库。
+*.jks
+*.keystore
+keystore-password.txt
+release-assets/
+
+# Python 缓存不入库。
+__pycache__/
+*.pyc

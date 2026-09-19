@@ -5,6 +5,39 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// 默认版本与仓库当前发布保持一致；.github/workflows/release.yml 用 -P 参数覆盖它们。
+val releaseVersionName = providers.gradleProperty("releaseVersionName").orNull ?: "1.0.1"
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orNull?.let {
+    it.toIntOrNull() ?: throw GradleException("releaseVersionCode 必须是整数，收到：$it")
+} ?: 2
+
+if (!releaseVersionName.matches(Regex("""\d+\.\d+\.\d+"""))) {
+    throw GradleException("releaseVersionName 必须是形如 1.0.2 的三段版本号，收到：$releaseVersionName")
+}
+
+// Release 签名材料只从环境变量读取，仓库不保存私钥或密码。
+val signingRequired = providers.environmentVariable("CASHIERHELPER_REQUIRE_SIGNING").orNull == "true"
+// 名字不能与 SigningConfig 的属性同名，否则在 signingConfigs {} 里会解析成配置对象自身的属性。
+val envKeystorePath = providers.environmentVariable("CASHIERHELPER_KEYSTORE_PATH").orNull
+val envKeystorePassword = providers.environmentVariable("CASHIERHELPER_KEYSTORE_PASSWORD").orNull
+val envKeyAlias = providers.environmentVariable("CASHIERHELPER_KEY_ALIAS").orNull
+val envKeyPassword = providers.environmentVariable("CASHIERHELPER_KEY_PASSWORD").orNull
+
+if (signingRequired) {
+    val missing = mapOf(
+        "CASHIERHELPER_KEYSTORE_PATH" to envKeystorePath,
+        "CASHIERHELPER_KEYSTORE_PASSWORD" to envKeystorePassword,
+        "CASHIERHELPER_KEY_ALIAS" to envKeyAlias,
+        "CASHIERHELPER_KEY_PASSWORD" to envKeyPassword,
+    ).filterValues { it.isNullOrBlank() }.keys.sorted()
+    if (missing.isNotEmpty()) {
+        throw GradleException("Release 构建要求签名配置，缺少环境变量：${missing.joinToString(", ")}")
+    }
+    if (!file(envKeystorePath.orEmpty()).isFile) {
+        throw GradleException("CASHIERHELPER_KEYSTORE_PATH 指向的文件不存在：$envKeystorePath")
+    }
+}
+
 android {
     namespace = "pro.xiangyu.cashierhelper"
     compileSdk = 36
@@ -13,10 +46,21 @@ android {
         applicationId = "pro.xiangyu.cashierhelper"
         minSdk = 30
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (!envKeystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(envKeystorePath)
+                storePassword = envKeystorePassword
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -26,6 +70,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

@@ -109,9 +109,71 @@ source /home/xiangyu/.config/android-env.sh
 | 产物 | 路径 | 说明 |
 |---|---|---|
 | Debug APK | `app/build/outputs/apk/debug/app-debug.apk` | 可直接安装验证。 |
-| Release APK（未签名） | `app/build/outputs/apk/release/app-release-unsigned.apk` | 构建成功不代表可分发；仓库没有签名配置。 |
+| Release APK（未签名） | `app/build/outputs/apk/release/app-release-unsigned.apk` | 未提供签名环境变量时的产物；构建成功不代表可分发。 |
+| Release APK（已签名） | `app/build/outputs/apk/release/app-release.apk` | 提供了签名环境变量时的产物，可直接安装。 |
 
-要得到可安装、可分发的 Release 包，需要自备 keystore，对上面这个未签名产物执行 `apksigner` 签名（必要时先 `zipalign`）。仓库不提供签名私钥。
+本地要产出已签名的 Release 包，先设置这四个环境变量（发布工作流用同名变量）：
+
+```bash
+export CASHIERHELPER_KEYSTORE_PATH=/path/to/release.jks
+export CASHIERHELPER_KEYSTORE_PASSWORD=...
+export CASHIERHELPER_KEY_ALIAS=cashierhelper
+export CASHIERHELPER_KEY_PASSWORD=...
+./gradlew assembleRelease -PreleaseVersionName=1.0.2 -PreleaseVersionCode=3
+```
+
+版本号默认是仓库基线 `1.0.1` / `2`，可以用 `-PreleaseVersionName` 和 `-PreleaseVersionCode` 覆盖。设置 `CASHIERHELPER_REQUIRE_SIGNING=true` 后缺少任何一个签名变量都会立即失败，发布工作流依赖这个行为。仓库不保存私钥。
+
+## 自动发布
+
+仓库用两个 GitHub Actions 工作流完成 CI/CD：
+
+| 工作流 | 触发 | 行为 |
+|---|---|---|
+| `CI` | 非 `main` 分支的推送、面向 `main` 的 PR | 运行 `python3 scripts/test_release.py` 和 `./gradlew testDebugUnitTest lintDebug assembleDebug`；失败时上传测试与 lint 报告。 |
+| `Release` | 每次推送到 `main` | 运行同一套检查，再用自动递增的版本构建、签名并发布一个 GitHub Release。 |
+
+一次推送包含多个提交时只发布最后一个。`Release` 使用固定并发组 `cashierhelper-release`，配置 `cancel-in-progress: false` 与 `queue: max`，多个运行按进入顺序串行排队，所以不会有两个运行同时分配版本号。
+
+### 版本规则
+
+`1.0.1` / `versionCode 2` 是基线：第一次自动发布产出 `v1.0.2` / `versionCode 3`，之后补丁位与 `versionCode` 各自加一。版本号由 `scripts/release.py` 依据已有的 Release（含草稿）和 `v1.0.*` tag 算出，通过 Gradle 参数注入，因此不会产生自动改版本的提交。
+
+### 发布产物
+
+每个 Release 包含：
+
+| 附件 | 说明 |
+|---|---|
+| `CashierHelper-v1.0.N.apk` | 用固定发布密钥签名的 Release APK，可直接安装。 |
+| `SHA256SUMS` | 附件校验和，用 `sha256sum -c SHA256SUMS` 校验。 |
+| `mapping.txt` | 该版本的混淆映射，用于还原崩溃堆栈。 |
+| `release-metadata.json` | 构建提交、运行 ID 与版本信息。 |
+
+工作流在公开 Release 前先用 `apksigner verify` 校验签名，再用 `aapt2 dump badging` 确认 APK 内嵌的 `versionName` 与 `versionCode` 和本次分配的版本一致，不一致就失败。版本先以草稿形式创建，附件全部上传成功后才公开，所以能下载到的 Release 一定是完整的。
+
+### 签名密钥
+
+发布密钥保存在仓库外的 `/home/xiangyu/.config/cashierhelper/signing/`（目录权限 `700`、文件权限 `600`）：一次性生成的 RSA 3072 位 keystore（alias `cashierhelper`，有效期 10000 天）与随机密码。密钥和密码同时配置为仓库 Secrets：
+
+| Secret | 内容 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `release.jks` 的 base64 编码。 |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore 密码。 |
+| `ANDROID_KEY_ALIAS` | `cashierhelper`。 |
+| `ANDROID_KEY_PASSWORD` | 密钥密码。 |
+
+工作流把密钥解码到 runner 的临时目录，结束时无论成功失败都会删除。请一并备份上面那个目录：私钥丢失后无法再发布可覆盖安装的更新，只能换新密钥并要求用户重新安装。一直沿用同一把密钥就能覆盖升级；如果设备上装的是 Debug 构建（签名不同），需要先卸载。
+
+### 失败恢复
+
+版本号在构建前就已占用，所以失败的运行可能让公开版本跳号，但不会重复使用已占用的版本。
+
+- 构建或上传失败时草稿 Release 会保留，重新运行同一个工作流（Actions 页面的 “Re-run all jobs”，或 `gh run rerun <run-id>`）会复用同一个草稿和版本号，只重试构建与上传。
+- 同一个提交重新推送时，如果该提交已经发布成功，`Release` 会直接结束，不再新建版本。
+- 附件上传中断后重跑，会先删除同名旧附件再重新上传，不会留下重复附件。
+- 补发一个较老的草稿不会覆盖更高版本的 Latest 标记。
+- 如果 `v1.0.N` tag 已存在但指向别的提交，工作流直接失败并要求人工处理，不会移动已有 tag。
 
 ## 已知限制
 
@@ -120,4 +182,3 @@ source /home/xiangyu/.config/android-env.sh
 - 三星电源管理、透明启动窗口残影、旋转与分屏、锁屏、省电模式等行为仍需在目标 One UI 版本上实机验证；自动化测试不能替代设备结论。
 - 本仓库不包含自动更新、检查更新或更新提醒；APK 更新需要手动安装。
 - 不承诺系统强制停止进程后继续执行任务，恢复只发生在应用下次运行时。
-
