@@ -1,5 +1,8 @@
 # Cashier Helper
 
+[![CI](https://github.com/xiangyumou/CashierHelper/actions/workflows/ci.yml/badge.svg)](https://github.com/xiangyumou/CashierHelper/actions/workflows/ci.yml)
+[![最新发布](https://img.shields.io/github/v/release/xiangyumou/CashierHelper)](https://github.com/xiangyumou/CashierHelper/releases/latest)
+
 Cashier Helper 是一个面向 Android 11（API 30）及以上设备的原生截图提交工具，用 Kotlin 与 Jetpack Compose 编写。主要验收设备是 Samsung Galaxy S24（One UI），实现只使用标准 Android 接口，因此其他厂商设备同样可用，但未逐一实测。
 
 应用不显示账单，也不常驻后台。你主动触发后，它截取默认显示屏，把 JPEG 提交到配置好的 Cashier 服务，并把分析结果写入通知和设置页的任务列表。
